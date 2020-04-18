@@ -1,0 +1,46 @@
+#!/usr/bin/env python2.7
+
+import requests
+from xml.etree import ElementTree
+from xml.sax.saxutils import escape
+import datetime
+
+_DEFAULT_API = "http://192.168.8.1/api"
+
+def send_sms(phone, content, api=_DEFAULT_API):
+    escape_content = escape(content)
+    date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    data = "<request><Index>-1</Index><Phones><Phone>{phone:s}</Phone></Phones><Sca/><Content>{content:s}</Content><Length>{length:d}</Length><Reserved>1</Reserved><Date>{date:s}</Date></request>".format(
+            phone=phone,
+            content=escape_content,
+            length=-1, # len(content),
+            date=date
+    )
+    session_token_request = requests.get("{}/webserver/SesTokInfo".format(api))
+    session_token_root = ElementTree.fromstring(session_token_request.content)
+    session = session_token_root.find("SesInfo").text
+    token = session_token_root.find("TokInfo").text
+    headers = {
+            "Cookie": session,
+            "X-Requested-With": "XMLHttpRequest",
+            "__RequestVerificationToken": token,
+            "Content-Type": "text/xml"
+    }
+    send_request = requests.post("{}/sms/send-sms".format(api), data=data, headers=headers)
+    send_root = ElementTree.fromstring(send_request.content)
+
+    return send_root.text == "OK"
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="send SMS text messages through HUAWEI 3G stick")
+    parser.add_argument("--number", "-n", type=str, required=True, help="phone number to send message to")
+    parser.add_argument("--message", "-m", type=str, required=True, help="message to send")
+    parser.add_argument("--api", "-a", type=str, default=_DEFAULT_API, help="API base address")
+
+    args = parser.parse_args()
+
+    result = send_sms(args.number, args.message, args.api)
+
+    exit(0 if result else 1)
